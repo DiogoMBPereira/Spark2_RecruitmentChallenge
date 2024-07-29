@@ -17,7 +17,6 @@ object Spark2_RecruitmentChallenge extends App {
     .master("local[*]")
     .getOrCreate()
 
-  val conversionRate = 0.9
   val gogglePlayStore_CsvPath = "src/main/resources/googleplaystore.csv"
   val gogglePlayStore_User_Reviews_CsvPath = "src/main/resources/googleplaystore_user_reviews.csv"
   val best_apps_CsvPath = "src/main/resources/best_apps.csv"
@@ -61,51 +60,7 @@ object Spark2_RecruitmentChallenge extends App {
   df2.show()
 
   //Part 3 -----------------------------------------------------------------
-  val genresConverter = udf((genres: String) => genres.split(";").map(_.trim).toSeq)
 
-  val convertPriceToEuros = udf((price: String) => {
-    val priceStr = price.replace("$", "").replace(",", "")
-    try {
-      val priceDouble = priceStr.toDouble
-      priceDouble * conversionRate
-    } catch {
-      case e: NumberFormatException => 0.0
-    }
-  })
-
-  val convertSizeUDF: UserDefinedFunction = udf((size: String) => {
-    size.toUpperCase match {
-      case p if p.endsWith("M") =>
-        try {
-          p.dropRight(1).toDouble * 1000000
-        } catch {
-          case _: NumberFormatException => Double.NaN
-        }
-      case p if p.endsWith("K") =>
-        try {
-          p.dropRight(1).toDouble * 1000
-        } catch {
-          case _: NumberFormatException => Double.NaN
-        }
-      case p =>
-        try {
-          p.toDouble
-        } catch {
-          case _: NumberFormatException => Double.NaN
-        }
-    }
-  })
-
-  val convertDateUDF = udf((date: String) => {
-    val inputFormat = new SimpleDateFormat("MMMM d, yyyy", Locale.ENGLISH)
-    val outputFormat = new SimpleDateFormat("yyyy-MM-dd")
-    try {
-      val parsedDate = inputFormat.parse(date)
-      outputFormat.format(parsedDate)
-    } catch {
-      case _: Throwable => null
-    }
-  })
 
   val dfTransformed = df0
     .withColumnRenamed("Content Rating", "Content_Rating")
@@ -114,10 +69,10 @@ object Spark2_RecruitmentChallenge extends App {
     .withColumnRenamed("Android Ver", "Minimum_Android_Version")
     .withColumn("Reviews", col("Reviews").cast(LongType))
     .withColumn("Rating", col("Rating").cast(DoubleType))
-    .withColumn("Genres", genresConverter(col("Genres")))
-    .withColumn("Price", convertPriceToEuros(col("Price")))
-    .withColumn("Size", convertSizeUDF(col("Size")))
-    .withColumn("Last_Updated", convertDateUDF(col("Last_Updated")))
+    .withColumn("Genres", ConvertionsFunctions.genresConverter(col("Genres")))
+    .withColumn("Price", ConvertionsFunctions.convertPriceToEuros(col("Price")))
+    .withColumn("Size", ConvertionsFunctions.convertSizeUDF(col("Size")))
+    .withColumn("Last_Updated", ConvertionsFunctions.convertDateUDF(col("Last_Updated")))
 
   val df_3 = dfTransformed.groupBy("APP").agg(
     collect_set("Category").alias("Categories"),
@@ -186,5 +141,53 @@ object FileUtils {
 
     bw.close()
   }
+}
+object ConvertionsFunctions{
+  val genresConverter = udf((genres: String) => genres.split(";").map(_.trim).toSeq)
+
+  val conversionRate = 0.9
+  val convertPriceToEuros = udf((price: String) => {
+    val priceStr = price.replace("$", "").replace(",", "")
+    try {
+      val priceDouble = priceStr.toDouble
+      priceDouble * conversionRate
+    } catch {
+      case e: NumberFormatException => 0.0
+    }
+  })
+
+  val convertSizeUDF: UserDefinedFunction = udf((size: String) => {
+    size.toUpperCase match {
+      case p if p.endsWith("M") =>
+        try {
+          p.dropRight(1).toDouble * 1000000
+        } catch {
+          case _: NumberFormatException => Double.NaN
+        }
+      case p if p.endsWith("K") =>
+        try {
+          p.dropRight(1).toDouble * 1000
+        } catch {
+          case _: NumberFormatException => Double.NaN
+        }
+      case p =>
+        try {
+          p.toDouble
+        } catch {
+          case _: NumberFormatException => Double.NaN
+        }
+    }
+  })
+
+  val convertDateUDF = udf((date: String) => {
+    val inputFormat = new SimpleDateFormat("MMMM d, yyyy", Locale.ENGLISH)
+    val outputFormat = new SimpleDateFormat("yyyy-MM-dd")
+    try {
+      val parsedDate = inputFormat.parse(date)
+      outputFormat.format(parsedDate)
+    } catch {
+      case _: Throwable => null
+    }
+  })
 }
 
